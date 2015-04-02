@@ -213,8 +213,63 @@ class VASTParser
                                     creative = @parseCompanionAd creativeTypeElement
                                     if creative
                                         ad.creatives.push creative
+                # VAST 1.0
+                when "Video"
+                    creative = @parseDeprecatedLinearElement node.parentNode
+                    if creative
+                        ad.creatives.push creative
+
+                # VAST 1.0
+                when "CompanionAds"
+                    creative = @parseDeprecatedCompanionAd node
+                    if creative
+                        ad.creatives.push creative
 
         return ad
+
+    @parseDeprecatedLinearElement: (creativeElement) ->
+        creative = new VASTCreativeLinear()
+        video = @childsByName(creativeElement, "Video")
+        creative.duration = @parseDuration @parseNodeText(@childByName(video, "Duration"))
+
+        for trackingEventsElement in @childsByName(creativeElement, "TrackingEvents")
+            for trackingElement in @childsByName(trackingEventsElement, "Tracking")
+                eventName = trackingElement.getAttribute("event")
+                trackingURLTemplate = @parseNodeText(trackingElement)
+                if eventName? and trackingURLTemplate?
+                    creative.trackingEvents[eventName] ?= []
+                    creative.trackingEvents[eventName].push trackingURLTemplate
+
+        for mediaFilesElement in @childsByName(video, "MediaFiles")
+            for mediaFileElement in @childsByName(mediaFilesElement, "MediaFile")
+                mediaFile = new VASTMediaFile()
+                mediaFile.id = mediaFileElement.getAttribute("id")
+                mediaFile.fileURL = @parseNodeText(mediaFileElement)
+                mediaFile.deliveryType = mediaFileElement.getAttribute("delivery")
+                mediaFile.codec = mediaFileElement.getAttribute("codec")
+                mediaFile.mimeType = mediaFileElement.getAttribute("type")
+                mediaFile.apiFramework = mediaFileElement.getAttribute("apiFramework")
+                mediaFile.bitrate = parseInt mediaFileElement.getAttribute("bitrate") or 0
+                mediaFile.minBitrate = parseInt mediaFileElement.getAttribute("minBitrate") or 0
+                mediaFile.maxBitrate = parseInt mediaFileElement.getAttribute("maxBitrate") or 0
+                mediaFile.width = parseInt mediaFileElement.getAttribute("width") or 0
+                mediaFile.height = parseInt mediaFileElement.getAttribute("height") or 0
+                
+                scalable = mediaFileElement.getAttribute("scalable")
+                if scalable and typeof scalable is "string"
+                  scalable = scalable.toLowerCase()
+                  if scalable is "true" then mediaFile.scalable = true
+                  else if scalable is "false" then mediaFile.scalable = false
+                
+                maintainAspectRatio = mediaFileElement.getAttribute("maintainAspectRatio")
+                if maintainAspectRatio and typeof maintainAspectRatio is "string"
+                  maintainAspectRatio = maintainAspectRatio.toLowerCase()
+                  if maintainAspectRatio is "true" then mediaFile.maintainAspectRatio = true
+                  else if maintainAspectRatio is "false" then mediaFile.maintainAspectRatio = false
+                
+                creative.mediaFiles.push mediaFile
+
+        return creative
 
     @parseCreativeLinearElement: (creativeElement) ->
         creative = new VASTCreativeLinear()
@@ -275,6 +330,10 @@ class VASTParser
                 creative.mediaFiles.push mediaFile
 
         return creative
+
+    # Temporory use original function
+    @parseDeprecatedCompanionAd: (creativeElement) ->
+        return @parseCompanionAd creativeElement
 
     @parseCompanionAd: (creativeElement) ->
         creative = new VASTCreativeCompanion()

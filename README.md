@@ -1,6 +1,6 @@
 # VAST Javascript Client
 
-[![Build Status](https://travis-ci.org/stevennick/vast-client-js.png)](https://travis-ci.org/stevennick/vast-client-js.png)
+[![Build Status](https://travis-ci.org/stevennick/vast-client-js.png)](https://travis-ci.org/stevennick/vast-client-js)
 
 ## Build / Contribute
 

@@ -56,7 +56,7 @@ class VASTParser
 
             response = new VASTResponse()
 
-            unless xml?.documentElement? and xml.documentElement.nodeName is "VAST"
+            unless xml?.documentElement? and (xml.documentElement.nodeName is "VAST" or xml.documentElement.nodeName is "VideoAdServingTemplate")
                 return cb()
 
             for node in xml.documentElement.childNodes
@@ -229,7 +229,7 @@ class VASTParser
 
     @parseDeprecatedLinearElement: (creativeElement) ->
         creative = new VASTCreativeLinear()
-        video = @childsByName(creativeElement, "Video")
+        video = @childByName(creativeElement, "Video")
         creative.duration = @parseDuration @parseNodeText(@childByName(video, "Duration"))
 
         for trackingEventsElement in @childsByName(creativeElement, "TrackingEvents")
@@ -248,6 +248,9 @@ class VASTParser
                 mediaFile.deliveryType = mediaFileElement.getAttribute("delivery")
                 mediaFile.codec = mediaFileElement.getAttribute("codec")
                 mediaFile.mimeType = mediaFileElement.getAttribute("type")
+                # Compatiable fix: fix media type for outdated mp4 type.
+                if mediaFile.mimeType is "video/x-mp4"
+                	mediaFile.mimeType = "video/x-mp4"
                 mediaFile.apiFramework = mediaFileElement.getAttribute("apiFramework")
                 mediaFile.bitrate = parseInt mediaFileElement.getAttribute("bitrate") or 0
                 mediaFile.minBitrate = parseInt mediaFileElement.getAttribute("minBitrate") or 0

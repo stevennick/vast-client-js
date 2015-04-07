@@ -248,9 +248,9 @@ class VASTParser
                 mediaFile.deliveryType = mediaFileElement.getAttribute("delivery")
                 mediaFile.codec = mediaFileElement.getAttribute("codec")
                 mediaFile.mimeType = mediaFileElement.getAttribute("type")
-                # Compatiable fix: fix media type for outdated mp4 type.
+                # Compatiable fix: fix media type for unofficial mp4 mime type.
                 if mediaFile.mimeType is "video/x-mp4"
-                	mediaFile.mimeType = "video/x-mp4"
+                	mediaFile.mimeType = "video/mp4"
                 mediaFile.apiFramework = mediaFileElement.getAttribute("apiFramework")
                 mediaFile.bitrate = parseInt mediaFileElement.getAttribute("bitrate") or 0
                 mediaFile.minBitrate = parseInt mediaFileElement.getAttribute("minBitrate") or 0

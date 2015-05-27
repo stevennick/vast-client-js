@@ -624,7 +624,7 @@ VASTParser = (function() {
           return cb(err);
         }
         response = new VASTResponse();
-        if (!(((xml != null ? xml.documentElement : void 0) != null) && xml.documentElement.nodeName === "VAST")) {
+        if (!(((xml != null ? xml.documentElement : void 0) != null) && (xml.documentElement.nodeName === "VAST" || xml.documentElement.nodeName === "VideoAdServingTemplate"))) {
           return cb();
         }
         _ref = xml.documentElement.childNodes;
@@ -863,9 +863,87 @@ VASTParser = (function() {
               }
             }
           }
+          break;
+        case "Video":
+          creative = this.parseDeprecatedLinearElement(node.parentNode);
+          if (creative) {
+            ad.creatives.push(creative);
+          }
+          break;
+        case "CompanionAds":
+          creative = this.parseDeprecatedCompanionAd(node);
+          if (creative) {
+            ad.creatives.push(creative);
+          }
       }
     }
     return ad;
+  };
+
+  VASTParser.parseDeprecatedLinearElement = function(creativeElement) {
+    var creative, eventName, maintainAspectRatio, mediaFile, mediaFileElement, mediaFilesElement, scalable, trackingElement, trackingEventsElement, trackingURLTemplate, video, _base, _i, _j, _k, _l, _len, _len1, _len2, _len3, _ref, _ref1, _ref2, _ref3;
+    creative = new VASTCreativeLinear();
+    video = this.childByName(creativeElement, "Video");
+    creative.duration = this.parseDuration(this.parseNodeText(this.childByName(video, "Duration")));
+    _ref = this.childsByName(creativeElement, "TrackingEvents");
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      trackingEventsElement = _ref[_i];
+      _ref1 = this.childsByName(trackingEventsElement, "Tracking");
+      for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
+        trackingElement = _ref1[_j];
+        eventName = trackingElement.getAttribute("event");
+        trackingURLTemplate = this.parseNodeText(trackingElement);
+        if ((eventName != null) && (trackingURLTemplate != null)) {
+          if ((_base = creative.trackingEvents)[eventName] == null) {
+            _base[eventName] = [];
+          }
+          creative.trackingEvents[eventName].push(trackingURLTemplate);
+        }
+      }
+    }
+    _ref2 = this.childsByName(video, "MediaFiles");
+    for (_k = 0, _len2 = _ref2.length; _k < _len2; _k++) {
+      mediaFilesElement = _ref2[_k];
+      _ref3 = this.childsByName(mediaFilesElement, "MediaFile");
+      for (_l = 0, _len3 = _ref3.length; _l < _len3; _l++) {
+        mediaFileElement = _ref3[_l];
+        mediaFile = new VASTMediaFile();
+        mediaFile.id = mediaFileElement.getAttribute("id");
+        mediaFile.fileURL = this.parseNodeText(mediaFileElement);
+        mediaFile.deliveryType = mediaFileElement.getAttribute("delivery");
+        mediaFile.codec = mediaFileElement.getAttribute("codec");
+        mediaFile.mimeType = mediaFileElement.getAttribute("type");
+        if (mediaFile.mimeType === "video/x-mp4") {
+          mediaFile.mimeType = "video/mp4";
+        }
+        mediaFile.apiFramework = mediaFileElement.getAttribute("apiFramework");
+        mediaFile.bitrate = parseInt(mediaFileElement.getAttribute("bitrate") || 0);
+        mediaFile.minBitrate = parseInt(mediaFileElement.getAttribute("minBitrate") || 0);
+        mediaFile.maxBitrate = parseInt(mediaFileElement.getAttribute("maxBitrate") || 0);
+        mediaFile.width = parseInt(mediaFileElement.getAttribute("width") || 0);
+        mediaFile.height = parseInt(mediaFileElement.getAttribute("height") || 0);
+        scalable = mediaFileElement.getAttribute("scalable");
+        if (scalable && typeof scalable === "string") {
+          scalable = scalable.toLowerCase();
+          if (scalable === "true") {
+            mediaFile.scalable = true;
+          } else if (scalable === "false") {
+            mediaFile.scalable = false;
+          }
+        }
+        maintainAspectRatio = mediaFileElement.getAttribute("maintainAspectRatio");
+        if (maintainAspectRatio && typeof maintainAspectRatio === "string") {
+          maintainAspectRatio = maintainAspectRatio.toLowerCase();
+          if (maintainAspectRatio === "true") {
+            mediaFile.maintainAspectRatio = true;
+          } else if (maintainAspectRatio === "false") {
+            mediaFile.maintainAspectRatio = false;
+          }
+        }
+        creative.mediaFiles.push(mediaFile);
+      }
+    }
+    return creative;
   };
 
   VASTParser.parseCreativeLinearElement = function(creativeElement) {
@@ -949,6 +1027,10 @@ VASTParser = (function() {
       }
     }
     return creative;
+  };
+
+  VASTParser.parseDeprecatedCompanionAd = function(creativeElement) {
+    return this.parseCompanionAd(creativeElement);
   };
 
   VASTParser.parseCompanionAd = function(creativeElement) {

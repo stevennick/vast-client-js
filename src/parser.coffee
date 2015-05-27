@@ -23,8 +23,15 @@ class VASTParser
         if not cb
             cb = options if typeof options is 'function'
             options = {}
-        
+
         @_parse url, null, options, (err, response) ->
+            cb(response)
+
+    @parseContent: (xml, url, options, cb) ->
+        if not cb
+            cb = options if typeof options is 'function'
+            options = {}
+        @_parseContent xml, url, null, options, (err, response) ->
             cb(response)
 
     @vent = new EventEmitter()
@@ -50,98 +57,115 @@ class VASTParser
         parentURLs ?= []
         parentURLs.push url
 
-        
+
         URLHandler.get url, options, (err, xml) =>
             return cb(err) if err?
+            @_parseNode(url, xml, parentURLs, options, cb)
 
-            response = new VASTResponse()
+    @_parseContent: (xml, url, parentURLs, options, cb) ->
+        if not cb
+            cb = options if typeof options is 'function'
+            options = {}
 
-            unless xml?.documentElement? and (xml.documentElement.nodeName is "VAST" or xml.documentElement.nodeName is "VideoAdServingTemplate")
-                return cb()
+        # Process url with defined filter
+        url = filter(url) for filter in URLTemplateFilters
 
-            for node in xml.documentElement.childNodes
-                if node.nodeName is 'Error'
-                    response.errorURLTemplates.push (@parseNodeText node)
+        parentURLs ?= []
+        parentURLs.push url
 
-            for node in xml.documentElement.childNodes
-                if node.nodeName is 'Ad'
-                    ad = @parseAdElement node
-                    if ad?
-                        response.ads.push ad
-                    else
-                        # VAST version of response not supported.
-                        @track(response.errorURLTemplates, ERRORCODE: 101)
+        @_parseNode(url, xml, parentURLs, options, cb)
 
-            complete = (errorAlreadyRaised = false) =>
-                return unless response
-                for ad in response.ads
-                    return if ad.nextWrapperURL?
-                if response.ads.length == 0
-                    # No Ad Response
-                    # The VAST <Error> element is optional but if included, the video player must send a request to the URI
-                    # provided when the VAST response returns an empty InLine response after a chain of one or more wrapper ads.
-                    # If an [ERRORCODE] macro is included, the video player should substitute with error code 303.
-                    @track(response.errorURLTemplates, ERRORCODE: 303) unless errorAlreadyRaised
-                    response = null
-                cb(null, response)
 
-            loopIndex = response.ads.length
-            while loopIndex--
-                ad = response.ads[loopIndex]
-                continue unless ad.nextWrapperURL?
-                do (ad) =>
-                    if parentURLs.length >= 10 or ad.nextWrapperURL in parentURLs
-                        # Wrapper limit reached, as defined by the video player.
-                        # Too many Wrapper responses have been received with no InLine response.
-                        @track(ad.errorURLTemplates, ERRORCODE: 302)
+    @_parseNode: (url, xml, parentURLs, options, cb) ->
+        response = new VASTResponse()
+
+        unless xml?.documentElement? and (xml.documentElement.nodeName is "VAST" or xml.documentElement.nodeName is "VideoAdServingTemplate")
+            return cb()
+
+        for node in xml.documentElement.childNodes
+            if node.nodeName is 'Error'
+                response.errorURLTemplates.push (@parseNodeText node)
+
+        for node in xml.documentElement.childNodes
+            if node.nodeName is 'Ad'
+                ad = @parseAdElement node
+                if ad?
+                    response.ads.push ad
+                else
+                    # VAST version of response not supported.
+                    @track(response.errorURLTemplates, ERRORCODE: 101)
+
+        complete = (errorAlreadyRaised = false) =>
+            return unless response
+            for ad in response.ads
+                return if ad.nextWrapperURL?
+            if response.ads.length == 0
+                # No Ad Response
+                # The VAST <Error> element is optional but if included, the video player must send a request to the URI
+                # provided when the VAST response returns an empty InLine response after a chain of one or more wrapper ads.
+                # If an [ERRORCODE] macro is included, the video player should substitute with error code 303.
+                @track(response.errorURLTemplates, ERRORCODE: 303) unless errorAlreadyRaised
+                response = null
+            cb(null, response)
+
+        loopIndex = response.ads.length
+        while loopIndex--
+            ad = response.ads[loopIndex]
+            continue unless ad.nextWrapperURL?
+            do (ad) =>
+                if parentURLs.length >= 10 or ad.nextWrapperURL in parentURLs
+                    # Wrapper limit reached, as defined by the video player.
+                    # Too many Wrapper responses have been received with no InLine response.
+                    @track(ad.errorURLTemplates, ERRORCODE: 302)
+                    response.ads.splice(response.ads.indexOf(ad), 1)
+                    complete()
+                    return
+
+                if ad.nextWrapperURL.indexOf('://') == -1
+                    # Resolve relative URLs (mainly for unit testing)
+                    baseURL = url.slice(0, url.lastIndexOf('/'))
+                    ad.nextWrapperURL = "#{baseURL}/#{ad.nextWrapperURL}"
+
+                @_parse ad.nextWrapperURL, parentURLs, options, (err, wrappedResponse) =>
+                    errorAlreadyRaised = false
+                    if err?
+                        # Timeout of VAST URI provided in Wrapper element, or of VAST URI provided in a subsequent Wrapper element.
+                        # (URI was either unavailable or reached a timeout as defined by the video player.)
+                        @track(ad.errorURLTemplates, ERRORCODE: 301)
                         response.ads.splice(response.ads.indexOf(ad), 1)
-                        complete()
-                        return
+                        errorAlreadyRaised = true
+                    else if not wrappedResponse?
+                        # No Ads VAST response after one or more Wrappers
+                        @track(ad.errorURLTemplates, ERRORCODE: 303)
+                        response.ads.splice(response.ads.indexOf(ad), 1)
+                        errorAlreadyRaised = true
+                    else
+                        response.errorURLTemplates = response.errorURLTemplates.concat wrappedResponse.errorURLTemplates
+                        index = response.ads.indexOf(ad)
+                        response.ads.splice(index, 1)
+                        for wrappedAd in wrappedResponse.ads
+                            wrappedAd.errorURLTemplates = ad.errorURLTemplates.concat wrappedAd.errorURLTemplates
+                            wrappedAd.impressionURLTemplates = ad.impressionURLTemplates.concat wrappedAd.impressionURLTemplates
 
-                    if ad.nextWrapperURL.indexOf('://') == -1
-                        # Resolve relative URLs (mainly for unit testing)
-                        baseURL = url.slice(0, url.lastIndexOf('/'))
-                        ad.nextWrapperURL = "#{baseURL}/#{ad.nextWrapperURL}"
+                            if ad.trackingEvents?
+                                for creative in wrappedAd.creatives
+                                    if creative.type is 'linear'
+                                        for eventName in Object.keys ad.trackingEvents
+                                            creative.trackingEvents[eventName] or= []
+                                            creative.trackingEvents[eventName] = creative.trackingEvents[eventName].concat ad.trackingEvents[eventName]
 
-                    @_parse ad.nextWrapperURL, parentURLs, options, (err, wrappedResponse) =>
-                        errorAlreadyRaised = false
-                        if err?
-                            # Timeout of VAST URI provided in Wrapper element, or of VAST URI provided in a subsequent Wrapper element.
-                            # (URI was either unavailable or reached a timeout as defined by the video player.)
-                            @track(ad.errorURLTemplates, ERRORCODE: 301)
-                            response.ads.splice(response.ads.indexOf(ad), 1)
-                            errorAlreadyRaised = true
-                        else if not wrappedResponse?
-                            # No Ads VAST response after one or more Wrappers
-                            @track(ad.errorURLTemplates, ERRORCODE: 303)
-                            response.ads.splice(response.ads.indexOf(ad), 1)
-                            errorAlreadyRaised = true
-                        else
-                            response.errorURLTemplates = response.errorURLTemplates.concat wrappedResponse.errorURLTemplates
-                            index = response.ads.indexOf(ad)
-                            response.ads.splice(index, 1)
-                            for wrappedAd in wrappedResponse.ads
-                                wrappedAd.errorURLTemplates = ad.errorURLTemplates.concat wrappedAd.errorURLTemplates
-                                wrappedAd.impressionURLTemplates = ad.impressionURLTemplates.concat wrappedAd.impressionURLTemplates
+                            if ad.videoClickTrackingURLTemplates?
+                                for creative in wrappedAd.creatives
+                                    if creative.type is 'linear'
+                                        creative.videoClickTrackingURLTemplates = creative.videoClickTrackingURLTemplates.concat ad.videoClickTrackingURLTemplates
 
-                                if ad.trackingEvents?
-                                    for creative in wrappedAd.creatives
-                                        if creative.type is 'linear'
-                                            for eventName in Object.keys ad.trackingEvents
-                                                creative.trackingEvents[eventName] or= []
-                                                creative.trackingEvents[eventName] = creative.trackingEvents[eventName].concat ad.trackingEvents[eventName]
+                            response.ads.splice index, 0, wrappedAd
 
-                                if ad.videoClickTrackingURLTemplates?
-                                    for creative in wrappedAd.creatives
-                                        if creative.type is 'linear'
-                                            creative.videoClickTrackingURLTemplates = creative.videoClickTrackingURLTemplates.concat ad.videoClickTrackingURLTemplates
+                    delete ad.nextWrapperURL
+                    complete errorAlreadyRaised
 
-                                response.ads.splice index, 0, wrappedAd
+        complete()
 
-                        delete ad.nextWrapperURL
-                        complete errorAlreadyRaised
-
-            complete()
 
     @childByName: (node, name) ->
         for child in node.childNodes
@@ -257,19 +281,19 @@ class VASTParser
                 mediaFile.maxBitrate = parseInt mediaFileElement.getAttribute("maxBitrate") or 0
                 mediaFile.width = parseInt mediaFileElement.getAttribute("width") or 0
                 mediaFile.height = parseInt mediaFileElement.getAttribute("height") or 0
-                
+
                 scalable = mediaFileElement.getAttribute("scalable")
                 if scalable and typeof scalable is "string"
                   scalable = scalable.toLowerCase()
                   if scalable is "true" then mediaFile.scalable = true
                   else if scalable is "false" then mediaFile.scalable = false
-                
+
                 maintainAspectRatio = mediaFileElement.getAttribute("maintainAspectRatio")
                 if maintainAspectRatio and typeof maintainAspectRatio is "string"
                   maintainAspectRatio = maintainAspectRatio.toLowerCase()
                   if maintainAspectRatio is "true" then mediaFile.maintainAspectRatio = true
                   else if maintainAspectRatio is "false" then mediaFile.maintainAspectRatio = false
-                
+
                 creative.mediaFiles.push mediaFile
 
         return creative
@@ -317,19 +341,19 @@ class VASTParser
                 mediaFile.maxBitrate = parseInt mediaFileElement.getAttribute("maxBitrate") or 0
                 mediaFile.width = parseInt mediaFileElement.getAttribute("width") or 0
                 mediaFile.height = parseInt mediaFileElement.getAttribute("height") or 0
-                
+
                 scalable = mediaFileElement.getAttribute("scalable")
                 if scalable and typeof scalable is "string"
                   scalable = scalable.toLowerCase()
                   if scalable is "true" then mediaFile.scalable = true
                   else if scalable is "false" then mediaFile.scalable = false
-                
+
                 maintainAspectRatio = mediaFileElement.getAttribute("maintainAspectRatio")
                 if maintainAspectRatio and typeof maintainAspectRatio is "string"
                   maintainAspectRatio = maintainAspectRatio.toLowerCase()
                   if maintainAspectRatio is "true" then mediaFile.maintainAspectRatio = true
                   else if maintainAspectRatio is "false" then mediaFile.maintainAspectRatio = false
-                
+
                 creative.mediaFiles.push mediaFile
 
         return creative

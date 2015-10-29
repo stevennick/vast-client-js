@@ -409,7 +409,7 @@ VASTClient = (function() {
       cb(null);
       return;
     }
-    return VASTParser.parse(xml, url, options, (function(_this) {
+    return VASTParser.parseContent(xml, url, options, (function(_this) {
       return function(response) {
         return cb(response);
       };
@@ -698,44 +698,68 @@ VASTParser = (function() {
   };
 
   VASTParser._parseNode = function(url, xml, parentURLs, options, cb) {
-    var ad, complete, loopIndex, node, response, _i, _j, _len, _len1, _ref, _ref1;
+    var ad, complete, loopIndex, node, response, _i, _j, _k, _l, _len, _len1, _len2, _len3, _ref, _ref1, _ref2, _ref3;
     response = new VASTResponse();
-    if (!(((xml != null ? xml.documentElement : void 0) != null) && (xml.documentElement.nodeName === "VAST" || xml.documentElement.nodeName === "VideoAdServingTemplate"))) {
-      return cb();
+    if (!((((xml != null ? xml.documentElement : void 0) != null) && (xml.documentElement.nodeName === "VAST" || xml.documentElement.nodeName === "VideoAdServingTemplate")) || (((xml != null ? xml.nodeName : void 0) != null) && (xml.nodeName === "VAST" || xml.nodeName === "VideoAdServingTemplate")))) {
+      return cb;
     }
-    _ref = xml.documentElement.childNodes;
-    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-      node = _ref[_i];
-      if (node.nodeName === 'Error') {
-        response.errorURLTemplates.push(this.parseNodeText(node));
+    if (((xml != null ? xml.documentElement : void 0) != null)) {
+      _ref = xml.documentElement.childNodes;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        node = _ref[_i];
+        if (node.nodeName === 'Error') {
+          response.errorURLTemplates.push(this.parseNodeText(node));
+        }
       }
-    }
-    _ref1 = xml.documentElement.childNodes;
-    for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
-      node = _ref1[_j];
-      if (node.nodeName === 'Ad') {
-        ad = this.parseAdElement(node);
-        if (ad != null) {
-          response.ads.push(ad);
-        } else {
-          this.track(response.errorURLTemplates, {
-            ERRORCODE: 101
-          });
+      _ref1 = xml.documentElement.childNodes;
+      for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
+        node = _ref1[_j];
+        if (node.nodeName === 'Ad') {
+          ad = this.parseAdElement(node);
+          if (ad != null) {
+            response.ads.push(ad);
+          } else {
+            this.track(response.errorURLTemplates, {
+              ERRORCODE: 101
+            });
+          }
+        }
+      }
+    } else {
+      _ref2 = xml.childNodes;
+      for (_k = 0, _len2 = _ref2.length; _k < _len2; _k++) {
+        node = _ref2[_k];
+        if (node.nodeName === 'Error') {
+          response.errorURLTemplates.push(this.parseNodeText(node));
+        }
+      }
+      _ref3 = xml.childNodes;
+      for (_l = 0, _len3 = _ref3.length; _l < _len3; _l++) {
+        node = _ref3[_l];
+        if (node.nodeName === 'Ad') {
+          ad = this.parseAdElement(node);
+          if (ad != null) {
+            response.ads.push(ad);
+          } else {
+            this.track(response.errorURLTemplates, {
+              ERRORCODE: 101
+            });
+          }
         }
       }
     }
     complete = (function(_this) {
       return function(errorAlreadyRaised) {
-        var _k, _len2, _ref2;
+        var _len4, _m, _ref4;
         if (errorAlreadyRaised == null) {
           errorAlreadyRaised = false;
         }
         if (!response) {
           return;
         }
-        _ref2 = response.ads;
-        for (_k = 0, _len2 = _ref2.length; _k < _len2; _k++) {
-          ad = _ref2[_k];
+        _ref4 = response.ads;
+        for (_m = 0, _len4 = _ref4.length; _m < _len4; _m++) {
+          ad = _ref4[_m];
           if (ad.nextWrapperURL != null) {
             return;
           }
@@ -759,8 +783,8 @@ VASTParser = (function() {
       }
       (function(_this) {
         return (function(ad) {
-          var baseURL, _ref2;
-          if (parentURLs.length >= 10 || (_ref2 = ad.nextWrapperURL, __indexOf.call(parentURLs, _ref2) >= 0)) {
+          var baseURL, _ref4;
+          if (parentURLs.length >= 10 || (_ref4 = ad.nextWrapperURL, __indexOf.call(parentURLs, _ref4) >= 0)) {
             _this.track(ad.errorURLTemplates, {
               ERRORCODE: 302
             });
@@ -773,7 +797,7 @@ VASTParser = (function() {
             ad.nextWrapperURL = "" + baseURL + "/" + ad.nextWrapperURL;
           }
           return _this._parse(ad.nextWrapperURL, parentURLs, options, function(err, wrappedResponse) {
-            var creative, errorAlreadyRaised, eventName, index, wrappedAd, _base, _k, _l, _len2, _len3, _len4, _len5, _m, _n, _ref3, _ref4, _ref5, _ref6;
+            var creative, errorAlreadyRaised, eventName, index, wrappedAd, _base, _len4, _len5, _len6, _len7, _m, _n, _o, _p, _ref5, _ref6, _ref7, _ref8;
             errorAlreadyRaised = false;
             if (err != null) {
               _this.track(ad.errorURLTemplates, {
@@ -791,19 +815,19 @@ VASTParser = (function() {
               response.errorURLTemplates = response.errorURLTemplates.concat(wrappedResponse.errorURLTemplates);
               index = response.ads.indexOf(ad);
               response.ads.splice(index, 1);
-              _ref3 = wrappedResponse.ads;
-              for (_k = 0, _len2 = _ref3.length; _k < _len2; _k++) {
-                wrappedAd = _ref3[_k];
+              _ref5 = wrappedResponse.ads;
+              for (_m = 0, _len4 = _ref5.length; _m < _len4; _m++) {
+                wrappedAd = _ref5[_m];
                 wrappedAd.errorURLTemplates = ad.errorURLTemplates.concat(wrappedAd.errorURLTemplates);
                 wrappedAd.impressionURLTemplates = ad.impressionURLTemplates.concat(wrappedAd.impressionURLTemplates);
                 if (ad.trackingEvents != null) {
-                  _ref4 = wrappedAd.creatives;
-                  for (_l = 0, _len3 = _ref4.length; _l < _len3; _l++) {
-                    creative = _ref4[_l];
+                  _ref6 = wrappedAd.creatives;
+                  for (_n = 0, _len5 = _ref6.length; _n < _len5; _n++) {
+                    creative = _ref6[_n];
                     if (creative.type === 'linear') {
-                      _ref5 = Object.keys(ad.trackingEvents);
-                      for (_m = 0, _len4 = _ref5.length; _m < _len4; _m++) {
-                        eventName = _ref5[_m];
+                      _ref7 = Object.keys(ad.trackingEvents);
+                      for (_o = 0, _len6 = _ref7.length; _o < _len6; _o++) {
+                        eventName = _ref7[_o];
                         (_base = creative.trackingEvents)[eventName] || (_base[eventName] = []);
                         creative.trackingEvents[eventName] = creative.trackingEvents[eventName].concat(ad.trackingEvents[eventName]);
                       }
@@ -811,9 +835,9 @@ VASTParser = (function() {
                   }
                 }
                 if (ad.videoClickTrackingURLTemplates != null) {
-                  _ref6 = wrappedAd.creatives;
-                  for (_n = 0, _len5 = _ref6.length; _n < _len5; _n++) {
-                    creative = _ref6[_n];
+                  _ref8 = wrappedAd.creatives;
+                  for (_p = 0, _len7 = _ref8.length; _p < _len7; _p++) {
+                    creative = _ref8[_p];
                     if (creative.type === 'linear') {
                       creative.videoClickTrackingURLTemplates = creative.videoClickTrackingURLTemplates.concat(ad.videoClickTrackingURLTemplates);
                     }

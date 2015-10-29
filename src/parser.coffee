@@ -4,6 +4,7 @@ VASTAd = require './ad.coffee'
 VASTUtil = require './util.coffee'
 VASTCreativeLinear = require('./creative.coffee').VASTCreativeLinear
 VASTCreativeCompanion = require('./creative.coffee').VASTCreativeCompanion
+VASTExtension = require('./extension.coffee')
 VASTMediaFile = require './mediafile.coffee'
 VASTCompanionAd = require './companionad.coffee'
 EventEmitter = require('events').EventEmitter
@@ -237,6 +238,7 @@ class VASTParser
                                     creative = @parseCompanionAd creativeTypeElement
                                     if creative
                                         ad.creatives.push creative
+
                 # VAST 1.0
                 when "Video"
                     creative = @parseDeprecatedLinearElement node.parentNode
@@ -249,7 +251,28 @@ class VASTParser
                     if creative
                         ad.creatives.push creative
 
+                when "Extensions"
+                    for extensionElement in @childsByName(node, "Extension")
+                        ad.extensions.push @parseExtensionElement(extensionElement)
+
         return ad
+
+    @parseExtensionElement: (extensionElement) ->
+        extension = new VASTExtension()
+        extension.name = extensionElement.nodeName
+
+        if extensionElement.hasAttributes()
+            for attribute in extensionElement.attributes
+                extension.attributes[attribute.name] = attribute.value
+
+        if extensionElement.hasChildNodes()
+            for child in extensionElement.childNodes
+                if child.nodeType == Node.ELEMENT_NODE
+                    extension.children[child.nodeName] = @parseExtensionElement(child)
+                else if child.nodeType == Node.CDATA_SECTION_NODE
+                    extension.textContent = child.textContent
+
+        return extension
 
     @parseDeprecatedLinearElement: (creativeElement) ->
         creative = new VASTCreativeLinear()

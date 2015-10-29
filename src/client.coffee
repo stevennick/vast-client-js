@@ -73,7 +73,7 @@ class VASTClient
             cb(null)
             return
 
-        VASTParser.parse xml, url, options, (response) =>
+        VASTParser.parseContent xml, url, options, (response) =>
             cb(response)
 
 

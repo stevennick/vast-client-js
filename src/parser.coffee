@@ -80,21 +80,35 @@ class VASTParser
     @_parseNode: (url, xml, parentURLs, options, cb) ->
         response = new VASTResponse()
 
-        unless xml?.documentElement? and (xml.documentElement.nodeName is "VAST" or xml.documentElement.nodeName is "VideoAdServingTemplate")
-            return cb()
+        unless ((xml?.documentElement?) and (xml.documentElement.nodeName is "VAST" or xml.documentElement.nodeName is "VideoAdServingTemplate")) or (xml?.nodeName? and (xml.nodeName is "VAST" or xml.nodeName is "VideoAdServingTemplate"))
+            return cb
 
-        for node in xml.documentElement.childNodes
-            if node.nodeName is 'Error'
-                response.errorURLTemplates.push (@parseNodeText node)
+        if (xml?.documentElement?)
+            for node in xml.documentElement.childNodes
+                if node.nodeName is 'Error'
+                    response.errorURLTemplates.push (@parseNodeText node)
 
-        for node in xml.documentElement.childNodes
-            if node.nodeName is 'Ad'
-                ad = @parseAdElement node
-                if ad?
-                    response.ads.push ad
-                else
-                    # VAST version of response not supported.
-                    @track(response.errorURLTemplates, ERRORCODE: 101)
+            for node in xml.documentElement.childNodes
+                if node.nodeName is 'Ad'
+                    ad = @parseAdElement node
+                    if ad?
+                        response.ads.push ad
+                    else
+                        # VAST version of response not supported.
+                        @track(response.errorURLTemplates, ERRORCODE: 101)
+        else
+            for node in xml.childNodes
+                if node.nodeName is 'Error'
+                    response.errorURLTemplates.push (@parseNodeText node)
+
+            for node in xml.childNodes
+                if node.nodeName is 'Ad'
+                    ad = @parseAdElement node
+                    if ad?
+                        response.ads.push ad
+                    else
+                        # VAST version of response not supported.
+                        @track(response.errorURLTemplates, ERRORCODE: 101)
 
         complete = (errorAlreadyRaised = false) =>
             return unless response
